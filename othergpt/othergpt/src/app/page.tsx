@@ -7,15 +7,33 @@ type Message = {
   content: string;
 };
 
+const STORAGE_KEY = "othergpt_messages";
+
 export default function Home() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  function clearConversation() {
+    setMessages([]);
+  }
 
   async function sendMessage() {
     if (!input.trim() || loading) return;
@@ -50,7 +68,17 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen max-w-2xl mx-auto px-4 py-6">
-      <h1 className="text-lg font-semibold mb-6 text-foreground">OtherGPT</h1>
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-lg font-semibold text-foreground">OtherGPT</h1>
+        {messages.length > 0 && (
+          <button
+            onClick={clearConversation}
+            className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors"
+          >
+            Limpiar conversación
+          </button>
+        )}
+      </div>
 
       <div className="flex-1 overflow-y-auto space-y-4 mb-4">
         {messages.length === 0 && (
