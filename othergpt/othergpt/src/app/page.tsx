@@ -59,8 +59,18 @@ const LOADING_LABELS: Record<Mode, string> = {
   audio: "Generando audio...",
 };
 
+const MODELS = [
+  { id: "gpt-5-nano",               label: "GPT-5 Nano",        provider: "OpenAI" },
+  { id: "gpt-4o-mini",              label: "GPT-4o Mini",       provider: "OpenAI" },
+  { id: "claude-haiku-4-5-20251001",label: "Claude Haiku 4.5",  provider: "Anthropic" },
+  { id: "claude-sonnet-5",          label: "Claude Sonnet 5",   provider: "Anthropic" },
+  { id: "claude-opus-4-8",          label: "Claude Opus 4",     provider: "Anthropic" },
+];
+
 export default function Home() {
   const [mode, setMode] = useState<Mode>("text");
+  const [model, setModel] = useState("gpt-5-nano");
+  const isAnthropic = model.startsWith("claude-");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -109,7 +119,7 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: history, model }),
       });
       const data = await response.json();
       setLoading(false);
@@ -214,14 +224,38 @@ export default function Home() {
           {/* Header */}
           <div className="flex items-center justify-between mb-6 flex-shrink-0">
             <span className="text-sm font-medium text-zinc-400">OtherGPT</span>
-            {messages.length > 0 && (
-              <button
-                onClick={clearConversation}
-                className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-              >
-                Limpiar conversación
-              </button>
-            )}
+            <div className="flex items-center gap-3">
+              {mode === "text" && (
+                <select
+                  value={model}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setModel(next);
+                    if (next.startsWith("claude-")) setMode("text");
+                  }}
+                  className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs rounded-lg px-2 py-1 outline-none cursor-pointer hover:border-zinc-600 transition-colors"
+                >
+                  <optgroup label="OpenAI">
+                    {MODELS.filter((m) => m.provider === "OpenAI").map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Anthropic">
+                    {MODELS.filter((m) => m.provider === "Anthropic").map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </optgroup>
+                </select>
+              )}
+              {messages.length > 0 && (
+                <button
+                  onClick={clearConversation}
+                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
+                >
+                  Limpiar
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Messages */}
@@ -302,20 +336,27 @@ export default function Home() {
         <div className="max-w-2xl mx-auto px-4 py-4 space-y-3">
           {/* Mode selector */}
           <div className="flex justify-center gap-2">
-            {MODES.map(({ id, label, icon }) => (
-              <button
-                key={id}
-                onClick={() => setMode(id)}
-                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  mode === id
-                    ? "bg-white text-black"
-                    : "text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200"
-                }`}
-              >
-                {icon}
-                {label}
-              </button>
-            ))}
+            {MODES.map(({ id, label, icon }) => {
+              const disabled = isAnthropic && id !== "text";
+              return (
+                <button
+                  key={id}
+                  onClick={() => !disabled && setMode(id)}
+                  disabled={disabled}
+                  title={disabled ? "No disponible para modelos de Anthropic" : undefined}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    disabled
+                      ? "text-zinc-700 border border-zinc-900 cursor-not-allowed"
+                      : mode === id
+                      ? "bg-white text-black"
+                      : "text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200"
+                  }`}
+                >
+                  {icon}
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
           {/* Input */}
