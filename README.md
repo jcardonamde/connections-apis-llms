@@ -1,6 +1,6 @@
 # conexion-terminal
 
-Repositorio de experimentos de conexión con la API de OpenAI. Cada subcarpeta es un proyecto independiente con su propio entorno y dependencias.
+Repositorio de experimentos de conexión con APIs de inteligencia artificial. Cada subcarpeta es un proyecto independiente con su propio entorno y dependencias.
 
 ## Proyectos
 
@@ -9,8 +9,13 @@ Scripts de Node.js puro para explorar la API de OpenAI desde la terminal. Incluy
 
 → Ver [openai/README.md](openai/README.md)
 
+### `anthropic/`
+Scripts de Node.js + TypeScript para explorar la API de Anthropic (Claude) desde la terminal. Incluye ejemplos de mensajes simples, conversaciones multi-turno y streaming de respuestas.
+
+→ Ver [anthropic/README.md](anthropic/README.md)
+
 ### `othergpt/`
-Interfaz web minimalista construida con Next.js para probar la API de OpenAI con UI. Soporta conversaciones con contexto completo usando el endpoint de Chat Completions.
+Interfaz web construida con Next.js que integra múltiples proveedores de IA. Soporta chat con contexto, generación de imágenes, texto a audio y transcripción de voz. Permite cambiar entre modelos de OpenAI y Anthropic desde la UI.
 
 → Ver [othergpt/othergpt/README.md](othergpt/othergpt/README.md)
 
@@ -19,16 +24,17 @@ Interfaz web minimalista construida con Next.js para probar la API de OpenAI con
 ```
 conexion-terminal/
 ├── openai/          # Scripts Node.js: chat, streaming, terminal interactiva
+├── anthropic/       # Scripts TypeScript: mensajes, multi-turno, streaming con Claude
 └── othergpt/
-    └── othergpt/    # App Next.js con interfaz de chat web
+    └── othergpt/    # App Next.js: chat, imagen, audio, selector de modelos
 ```
 
-## Requisitos comunes
+## API keys requeridas
 
-Todos los proyectos necesitan una API key de OpenAI configurada como variable de entorno:
+Cada proyecto usa sus propias variables de entorno en un archivo `.env` o `.env.local` local. Consulta el README de cada subcarpeta para los detalles.
 
-```
-OPENAI_API_KEY=sk-...
-```
-
-Cada subcarpeta tiene su propio `.env` o `.env.local` — consulta el README de cada proyecto para los detalles de configuración.
+| Proyecto | Variable | Proveedor |
+|---|---|---|
+| `openai/` | `OPENAI_API_KEY` | OpenAI |
+| `anthropic/` | `ANTHROPIC_API_KEY` | Anthropic |
+| `othergpt/` | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` | OpenAI + Anthropic |
