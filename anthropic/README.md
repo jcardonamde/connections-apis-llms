@@ -49,16 +49,39 @@ npx tsx --env-file=.env index.ts
 
 ```
 anthropic/
-├── index.ts          # Script de prueba base con la API de Anthropic
+├── index.ts          # Cliente base: pregunta por la capital de Colombia y sus ciudades principales
+├── messages.ts       # Ejemplo de conversación multi-turno (capital + colores de la bandera)
+├── stream.ts         # Respuesta con streaming (imprime el texto conforme llega)
 ├── package.json
-├── tsconfig.json
 ├── .env              # API key (no se versiona)
 └── node_modules/
 ```
 
-## Qué hace index.ts
+## Ejemplos incluidos
 
-Crea un cliente de Anthropic, envía un mensaje al modelo `claude-opus-4-8` y imprime la respuesta en consola. Sirve como punto de partida para explorar la API de mensajes.
+| Archivo | Descripción |
+|---|---|
+| `index.ts` | Llamada básica a la API: una pregunta, una respuesta impresa en consola |
+| `messages.ts` | Conversación con múltiples mensajes de usuario en una sola llamada |
+| `stream.ts` | Streaming de respuesta usando `messages.stream` — imprime el texto token a token |
+
+## Ejecución de cada archivo
+
+### Con Bun
+
+```bash
+bun index.ts
+bun messages.ts
+bun stream.ts
+```
+
+### Con tsx
+
+```bash
+npx tsx --env-file=.env index.ts
+npx tsx --env-file=.env messages.ts
+npx tsx --env-file=.env stream.ts
+```
 
 ## Dependencias
 
