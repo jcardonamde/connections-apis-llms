@@ -61,15 +61,7 @@ const LOADING_LABELS: Record<Mode, string> = {
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("text");
-  const [messages, setMessages] = useState<Message[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingMode, setLoadingMode] = useState<Mode>("text");
@@ -79,8 +71,17 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
+  // Cargar desde localStorage después de hidratación para evitar mismatch servidor/cliente
   useEffect(() => {
-    // Solo persistir mensajes de texto — las URLs de imágenes y audio expiran
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) setMessages(JSON.parse(saved));
+    } catch {}
+  }, []);
+
+  // Solo persistir mensajes de texto — las URLs de imágenes y audio expiran
+  useEffect(() => {
+    if (messages.length === 0) return;
     const persistable = messages.filter((m) => m.type === "text");
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
   }, [messages]);
@@ -123,15 +124,19 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt }),
       });
-      const data = await response.json();
       setLoading(false);
-      if (data.error) {
-        setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${data.error}`, type: "text" }]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: prompt, type: "image", mediaUrl: data.url },
-        ]);
+      try {
+        const data = await response.json();
+        if (data.error) {
+          setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${data.error}`, type: "text" }]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: prompt, type: "image", mediaUrl: data.url },
+          ]);
+        }
+      } catch {
+        setMessages((prev) => [...prev, { role: "assistant", content: "Error: no se pudo conectar con el endpoint de imagen.", type: "text" }]);
       }
     } else if (mode === "audio") {
       const response = await fetch("/api/tts", {
