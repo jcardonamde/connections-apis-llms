@@ -60,17 +60,21 @@ const LOADING_LABELS: Record<Mode, string> = {
 };
 
 const MODELS = [
-  { id: "gpt-5-nano",               label: "GPT-5 Nano",        provider: "OpenAI" },
-  { id: "gpt-4o-mini",              label: "GPT-4o Mini",       provider: "OpenAI" },
-  { id: "claude-haiku-4-5-20251001",label: "Claude Haiku 4.5",  provider: "Anthropic" },
-  { id: "claude-sonnet-5",          label: "Claude Sonnet 5",   provider: "Anthropic" },
-  { id: "claude-opus-4-8",          label: "Claude Opus 4",     provider: "Anthropic" },
+  { id: "gpt-5-nano",                label: "GPT-5 Nano",        provider: "OpenAI" },
+  { id: "gpt-4o-mini",               label: "GPT-4o Mini",       provider: "OpenAI" },
+  { id: "gemini-flash-latest",         label: "Gemini Flash",      provider: "Google" },
+  { id: "gemini-flash-lite-latest",   label: "Gemini Flash Lite", provider: "Google" },
+  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  provider: "Anthropic" },
+  { id: "claude-sonnet-5",           label: "Claude Sonnet 5",   provider: "Anthropic" },
+  { id: "claude-opus-4-8",           label: "Claude Opus 4",     provider: "Anthropic" },
 ];
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("text");
   const [model, setModel] = useState("gpt-5-nano");
-  const isAnthropic = model.startsWith("claude-");
+  const isOpenAI = !model.startsWith("claude-") && !model.startsWith("gemini-");
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -85,16 +89,21 @@ export default function Home() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) setMessages(JSON.parse(saved));
+      setMessages(saved ? JSON.parse(saved) : []);
+      const savedPrompt = localStorage.getItem("othergpt_system_prompt");
+      setSystemPrompt(savedPrompt ?? "");
     } catch {}
   }, []);
 
   // Solo persistir mensajes de texto — las URLs de imágenes y audio expiran
   useEffect(() => {
-    if (messages.length === 0) return;
     const persistable = messages.filter((m) => m.type === "text");
     localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
   }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem("othergpt_system_prompt", systemPrompt);
+  }, [systemPrompt]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -119,7 +128,7 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, model }),
+        body: JSON.stringify({ messages: history, model, systemPrompt }),
       });
       const data = await response.json();
       setLoading(false);
@@ -222,21 +231,41 @@ export default function Home() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 pt-6 pb-4 flex flex-col min-h-full">
           {/* Header */}
-          <div className="flex items-center justify-between mb-6 flex-shrink-0">
+          <div className="flex flex-col gap-3 mb-6 flex-shrink-0">
+          <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-zinc-400">OtherGPT</span>
             <div className="flex items-center gap-3">
+              {mode === "text" && (
+                <button
+                  onClick={() => setShowSystemPrompt((v) => !v)}
+                  title="System prompt"
+                  className={`text-xs px-2 py-1 rounded-lg border transition-colors ${
+                    systemPrompt
+                      ? "border-zinc-600 text-zinc-300"
+                      : "border-zinc-800 text-zinc-600 hover:border-zinc-600 hover:text-zinc-400"
+                  }`}
+                >
+                  {showSystemPrompt ? "▾ Prompt" : "▸ Prompt"}
+                  {systemPrompt && <span className="ml-1 text-zinc-500">•</span>}
+                </button>
+              )}
               {mode === "text" && (
                 <select
                   value={model}
                   onChange={(e) => {
                     const next = e.target.value;
                     setModel(next);
-                    if (next.startsWith("claude-")) setMode("text");
+                    if (next.startsWith("claude-") || next.startsWith("gemini-")) setMode("text");
                   }}
                   className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs rounded-lg px-2 py-1 outline-none cursor-pointer hover:border-zinc-600 transition-colors"
                 >
                   <optgroup label="OpenAI">
                     {MODELS.filter((m) => m.provider === "OpenAI").map((m) => (
+                      <option key={m.id} value={m.id}>{m.label}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Google">
+                    {MODELS.filter((m) => m.provider === "Google").map((m) => (
                       <option key={m.id} value={m.id}>{m.label}</option>
                     ))}
                   </optgroup>
@@ -256,6 +285,16 @@ export default function Home() {
                 </button>
               )}
             </div>
+          </div>
+          {showSystemPrompt && mode === "text" && (
+            <textarea
+              value={systemPrompt}
+              onChange={(e) => setSystemPrompt(e.target.value)}
+              placeholder="Escribe un system prompt... (ej: Responde siempre en español y de forma concisa)"
+              rows={3}
+              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-300 placeholder-zinc-600 outline-none resize-none focus:border-zinc-600 transition-colors"
+            />
+          )}
           </div>
 
           {/* Messages */}
@@ -337,7 +376,7 @@ export default function Home() {
           {/* Mode selector */}
           <div className="flex justify-center gap-2">
             {MODES.map(({ id, label, icon }) => {
-              const disabled = isAnthropic && id !== "text";
+              const disabled = !isOpenAI && id !== "text";
               return (
                 <button
                   key={id}
