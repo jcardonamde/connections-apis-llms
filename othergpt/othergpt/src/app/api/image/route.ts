@@ -18,15 +18,17 @@ export async function POST(request: Request) {
     });
 
     const imageData = response.data?.[0];
-    const imageUrl =
-      imageData?.url ??
-      (imageData?.b64_json ? `data:image/png;base64,${imageData.b64_json}` : null);
 
-    if (!imageUrl) {
+    if (!imageData?.b64_json) {
       return Response.json({ error: "No image generated" }, { status: 500 });
     }
 
-    return Response.json({ url: imageUrl });
+    return Response.json({
+      image: {
+        b64: imageData.b64_json,
+        revisedPrompt: imageData.revised_prompt ?? prompt,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return Response.json({ error: message }, { status: 500 });
