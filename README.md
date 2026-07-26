@@ -19,14 +19,20 @@ Interfaz web construida con Next.js que integra múltiples proveedores de IA. So
 
 → Ver [othergpt/othergpt/README.md](othergpt/othergpt/README.md)
 
+### `vercel-demo/`
+Script de Node.js + TypeScript que usa el Vercel AI SDK (`ai` + `@ai-sdk/*`) para llamar a OpenAI, Anthropic o Google con una misma interfaz, cambiando de proveedor con solo comentar/descomentar una línea.
+
+→ Ver [vercel-demo/README.md](vercel-demo/README.md)
+
 ## Estructura
 
 ```
 conexion-terminal/
 ├── openai/          # Scripts Node.js: chat, streaming, terminal interactiva
 ├── anthropic/       # Scripts TypeScript: mensajes, multi-turno, streaming con Claude
-└── othergpt/
-    └── othergpt/    # App Next.js: chat, imagen, audio, selector de modelos
+├── othergpt/
+│   └── othergpt/    # App Next.js: chat, imagen, audio, selector de modelos
+└── vercel-demo/     # Script TypeScript: Vercel AI SDK, proveedor seleccionable (OpenAI/Anthropic/Google)
 ```
 
 ## API keys requeridas
@@ -38,3 +44,4 @@ Cada proyecto usa sus propias variables de entorno en un archivo `.env` o `.env.
 | `openai/` | `OPENAI_API_KEY` | OpenAI |
 | `anthropic/` | `ANTHROPIC_API_KEY` | Anthropic |
 | `othergpt/` | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` | OpenAI + Anthropic |
+| `vercel-demo/` | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` + `GOOGLE_GENERATIVE_AI_API_KEY` | OpenAI + Anthropic + Google |
