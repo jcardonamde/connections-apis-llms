@@ -1,190 +1,267 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, FormEvent, KeyboardEvent } from "react";
+import { Send, Trash2, Bot, Image as ImageIcon, Volume2, Mic, MicOff, Loader2, Download, MessageSquare } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
-type Mode = "text" | "image" | "audio";
+type MessageType = "text" | "image" | "audio";
+type Mode = "chat" | "image" | "tts";
+type Provider = "openai" | "anthropic" | "google";
 
-type Message = {
-  role: "user" | "assistant";
+interface Message {
+  role: "user" | "assistant" | "system";
   content: string;
-  type: Mode;
-  mediaUrl?: string;
-};
-
-const STORAGE_KEY = "othergpt_messages";
-
-const MODES: { id: Mode; label: string; icon: React.ReactNode }[] = [
-  {
-    id: "text",
-    label: "Texto",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      </svg>
-    ),
-  },
-  {
-    id: "image",
-    label: "Imagen",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <circle cx="9" cy="9" r="2" />
-        <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-      </svg>
-    ),
-  },
-  {
-    id: "audio",
-    label: "Texto a Audio",
-    icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-        <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-        <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-      </svg>
-    ),
-  },
-];
-
-const PLACEHOLDERS: Record<Mode, string> = {
-  text: "Escribe un mensaje...",
-  image: "Describe la imagen que quieres generar...",
-  audio: "Escribe el texto que quieres convertir a audio...",
-};
-
-const LOADING_LABELS: Record<Mode, string> = {
-  text: "...",
-  image: "Generando imagen...",
-  audio: "Generando audio...",
-};
-
-const MODELS = [
-  { id: "gpt-5-nano",                label: "GPT-5 Nano",        provider: "OpenAI" },
-  { id: "gpt-4o-mini",               label: "GPT-4o Mini",       provider: "OpenAI" },
-  { id: "gemini-flash-latest",         label: "Gemini Flash",      provider: "Google" },
-  { id: "gemini-flash-lite-latest",   label: "Gemini Flash Lite", provider: "Google" },
-  { id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5",  provider: "Anthropic" },
-  { id: "claude-sonnet-5",           label: "Claude Sonnet 5",   provider: "Anthropic" },
-  { id: "claude-opus-4-8",           label: "Claude Opus 4",     provider: "Anthropic" },
-];
+  type?: MessageType;
+  imageB64?: string;
+  audioUrl?: string;
+}
 
 export default function Home() {
-  const [mode, setMode] = useState<Mode>("text");
-  const [model, setModel] = useState("gpt-5-nano");
-  const isOpenAI = !model.startsWith("claude-") && !model.startsWith("gemini-");
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [showSystemPrompt, setShowSystemPrompt] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [loadingMode, setLoadingMode] = useState<Mode>("text");
+  const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const [mode, setMode] = useState<Mode>("chat");
+  const [provider, setProvider] = useState<Provider>("openai");
   const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  // Cargar desde localStorage después de hidratación para evitar mismatch servidor/cliente
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      setMessages(saved ? JSON.parse(saved) : []);
-      const savedPrompt = localStorage.getItem("othergpt_system_prompt");
-      setSystemPrompt(savedPrompt ?? "");
-    } catch {}
-  }, []);
-
-  // Solo persistir mensajes de texto — las URLs de imágenes y audio expiran
-  useEffect(() => {
-    const persistable = messages.filter((m) => m.type === "text");
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
-  }, [messages]);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    localStorage.setItem("othergpt_system_prompt", systemPrompt);
-  }, [systemPrompt]);
+    scrollToBottom();
+  }, [messages, isLoading]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
-
-  async function sendMessage() {
-    if (!input.trim() || loading) return;
-
-    const prompt = input.trim();
-    setInput("");
-    setLoading(true);
-    setLoadingMode(mode);
-
-    const userMessage: Message = { role: "user", content: prompt, type: mode };
-    setMessages((prev) => [...prev, userMessage]);
-
-    if (mode === "text") {
-      const history = [...messages, userMessage]
-        .filter((m) => m.type === "text")
-        .map((m) => ({ role: m.role, content: m.content }));
-
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: history, model, systemPrompt }),
-      });
-      const data = await response.json();
-      setLoading(false);
-      if (data.error) {
-        setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${data.error}`, type: "text" }]);
-      } else {
-        setMessages((prev) => [...prev, { role: "assistant", content: data.content, type: "text" }]);
-      }
-    } else if (mode === "image") {
-      const response = await fetch("/api/image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
-      });
-      setLoading(false);
-      try {
-        const data = await response.json();
-        if (data.error) {
-          setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${data.error}`, type: "text" }]);
-        } else {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: prompt, type: "image", mediaUrl: data.url },
-          ]);
-        }
-      } catch {
-        setMessages((prev) => [...prev, { role: "assistant", content: "Error: no se pudo conectar con el endpoint de imagen.", type: "text" }]);
-      }
-    } else if (mode === "audio") {
-      const response = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: prompt }),
-      });
-      setLoading(false);
-      if (response.ok) {
-        const blob = await response.blob();
-        const audioUrl = URL.createObjectURL(blob);
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: prompt, type: "audio", mediaUrl: audioUrl },
-        ]);
-      }
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
-  }
+  }, [input]);
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+  const sendMessage = async (e?: FormEvent) => {
+    e?.preventDefault();
+    const trimmed = input.trim();
+    if (!trimmed || isLoading) return;
+
+    const userMessage: Message = { role: "user", content: trimmed };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    setInput("");
+    setIsLoading(true);
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: updatedMessages, provider }),
+      });
+
+      const data = await res.json();
+
+      if (data.error) {
+        setMessages([
+          ...updatedMessages,
+          { role: "assistant", content: `Error: ${data.error}` },
+        ]);
+      } else {
+        setMessages([...updatedMessages, data.message]);
+      }
+    } catch {
+      setMessages([
+        ...updatedMessages,
+        {
+          role: "assistant",
+          content: "Error: No se pudo conectar con el servidor.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+      textareaRef.current?.focus();
+    }
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSubmit();
     }
-  }
+  };
 
-  async function toggleRecording() {
+  const clearChat = () => {
+    setMessages([]);
+    setInput("");
+    textareaRef.current?.focus();
+  };
+
+  const generateImage = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || isLoading) return;
+
+    const userMessage: Message = {
+      role: "user",
+      content: trimmed,
+      type: "image",
+    };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    setInput("");
+    setIsLoading(true);
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    try {
+      const res = await fetch("/api/image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: trimmed }),
+      });
+      const data = await res.json();
+
+      if (data.error) {
+        setMessages([
+          ...updatedMessages,
+          { role: "assistant", content: `Error: ${data.error}` },
+        ]);
+      } else if (data.image?.b64) {
+        setMessages([
+          ...updatedMessages,
+          {
+            role: "assistant",
+            content: data.image.revisedPrompt || trimmed,
+            type: "image",
+            imageB64: data.image.b64,
+          },
+        ]);
+      }
+    } catch {
+      setMessages([
+        ...updatedMessages,
+        {
+          role: "assistant",
+          content: "Error: No se pudo generar la imagen.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const sendTTS = async () => {
+    const trimmed = input.trim();
+    if (!trimmed || isLoading) return;
+
+    const userMessage: Message = {
+      role: "user",
+      content: trimmed,
+      type: "audio",
+    };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
+    setInput("");
+    setIsLoading(true);
+
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: trimmed }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setMessages([
+          ...updatedMessages,
+          { role: "assistant", content: `Error: ${data.error}` },
+        ]);
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      setMessages([
+        ...updatedMessages,
+        {
+          role: "assistant",
+          content: trimmed,
+          type: "audio",
+          audioUrl: url,
+        },
+      ]);
+    } catch {
+      setMessages([
+        ...updatedMessages,
+        {
+          role: "assistant",
+          content: "Error: No se pudo generar el audio.",
+        },
+      ]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e?: FormEvent) => {
+    e?.preventDefault();
+    if (mode === "chat") return sendMessage(e);
+    if (mode === "image") return generateImage();
+    if (mode === "tts") return sendTTS();
+  };
+
+  const speakText = async (text: string) => {
+    if (isSpeaking) return;
+    setIsSpeaking(true);
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        console.error("TTS error:", data.error);
+        return;
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        setIsSpeaking(false);
+        URL.revokeObjectURL(url);
+      };
+      audio.onerror = () => {
+        setIsSpeaking(false);
+        URL.revokeObjectURL(url);
+      };
+      audio.play();
+    } catch (err) {
+      console.error("TTS failed:", err);
+      setIsSpeaking(false);
+    }
+  };
+
+  const toggleRecording = async () => {
     if (isRecording) {
       mediaRecorderRef.current?.stop();
+      setIsRecording(false);
       return;
     }
 
@@ -199,252 +276,277 @@ export default function Home() {
       };
 
       mediaRecorder.onstop = async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setIsRecording(false);
-        setIsTranscribing(true);
-
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        const form = new FormData();
-        form.append("audio", blob, "recording.webm");
+        stream.getTracks().forEach((t) => t.stop());
 
-        const response = await fetch("/api/transcribe", { method: "POST", body: form });
-        const data = await response.json();
-        setIsTranscribing(false);
-
-        if (data.text) setInput((prev) => prev + data.text);
+        setIsLoading(true);
+        try {
+          const formData = new FormData();
+          formData.append("audio", blob, "recording.webm");
+          const res = await fetch("/api/stt", { method: "POST", body: formData });
+          const data = await res.json();
+          if (data.error) {
+            console.error("STT error:", data.error);
+          } else if (data.text) {
+            setInput((prev) => (prev ? `${prev} ${data.text}` : data.text));
+          }
+        } catch (err) {
+          console.error("STT failed:", err);
+        } finally {
+          setIsLoading(false);
+          textareaRef.current?.focus();
+        }
       };
 
       mediaRecorder.start();
       setIsRecording(true);
-    } catch {
-      // El usuario denegó el permiso del micrófono
+    } catch (err) {
+      console.error("Recording failed:", err);
     }
-  }
-
-  function clearConversation() {
-    setMessages([]);
-  }
+  };
 
   return (
-    <div className="flex flex-col h-screen bg-black text-white">
-      {/* Scrollable message area */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto px-4 pt-6 pb-4 flex flex-col min-h-full">
-          {/* Header */}
-          <div className="flex flex-col gap-3 mb-6 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-zinc-400">OtherGPT</span>
-            <div className="flex items-center gap-3">
-              {mode === "text" && (
-                <button
-                  onClick={() => setShowSystemPrompt((v) => !v)}
-                  title="System prompt"
-                  className={`text-xs px-2 py-1 rounded-lg border transition-colors ${
-                    systemPrompt
-                      ? "border-zinc-600 text-zinc-300"
-                      : "border-zinc-800 text-zinc-600 hover:border-zinc-600 hover:text-zinc-400"
+    <div className="flex h-dvh flex-col bg-background">
+      {/* Header */}
+      <header className="border-b border-border">
+        <div className="flex items-center justify-between px-4 py-3 sm:px-6">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-foreground">
+              <Bot className="h-4.5 w-4.5 text-background" />
+            </div>
+            <h1 className="text-lg font-semibold tracking-tight">otro-GPT</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <select
+              value={provider}
+              onChange={(e) => {
+                const val = e.target.value as Provider;
+                setProvider(val);
+                if (val !== "openai") setMode("chat");
+              }}
+              className="rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground focus:border-foreground/20 focus:outline-none"
+            >
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="google">Google Gemini</option>
+            </select>
+            <button
+              onClick={clearChat}
+              className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              title="Limpiar chat"
+            >
+              <Trash2 className="h-4.5 w-4.5" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Messages */}
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
+          {messages.length === 0 && !isLoading && (
+            <div className="flex h-full min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
+                <Bot className="h-7 w-7 text-muted-foreground" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold tracking-tight">
+                  Hola, soy otro-GPT
+                </h2>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  {mode === "chat" && "Escribe un mensaje para comenzar la conversación."}
+                  {mode === "image" && "Describe la imagen que quieres generar con DALL-E 3."}
+                  {mode === "tts" && "Escribe un texto para convertirlo en audio."}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-6">
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className={`max-w-[85%] sm:max-w-[75%] ${
+                    msg.role === "user"
+                      ? "rounded-2xl rounded-br-md bg-user-bubble px-4 py-2.5 text-user-bubble-text"
+                      : "prose-chat text-foreground"
                   }`}
                 >
-                  {showSystemPrompt ? "▾ Prompt" : "▸ Prompt"}
-                  {systemPrompt && <span className="ml-1 text-zinc-500">•</span>}
-                </button>
-              )}
-              {mode === "text" && (
-                <select
-                  value={model}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setModel(next);
-                    if (next.startsWith("claude-") || next.startsWith("gemini-")) setMode("text");
-                  }}
-                  className="bg-zinc-900 border border-zinc-800 text-zinc-300 text-xs rounded-lg px-2 py-1 outline-none cursor-pointer hover:border-zinc-600 transition-colors"
-                >
-                  <optgroup label="OpenAI">
-                    {MODELS.filter((m) => m.provider === "OpenAI").map((m) => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Google">
-                    {MODELS.filter((m) => m.provider === "Google").map((m) => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Anthropic">
-                    {MODELS.filter((m) => m.provider === "Anthropic").map((m) => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
-                    ))}
-                  </optgroup>
-                </select>
-              )}
-              {messages.length > 0 && (
-                <button
-                  onClick={clearConversation}
-                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
-                >
-                  Limpiar
-                </button>
-              )}
-            </div>
-          </div>
-          {showSystemPrompt && mode === "text" && (
-            <textarea
-              value={systemPrompt}
-              onChange={(e) => setSystemPrompt(e.target.value)}
-              placeholder="Escribe un system prompt... (ej: Responde siempre en español y de forma concisa)"
-              rows={3}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-zinc-300 placeholder-zinc-600 outline-none resize-none focus:border-zinc-600 transition-colors"
-            />
-          )}
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1">
-            {messages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full py-24 gap-4 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-zinc-800 flex items-center justify-center">
-                  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5">
-                    <rect x="3" y="8" width="18" height="11" rx="2" />
-                    <path d="M8 8V6a4 4 0 0 1 8 0v2" />
-                    <circle cx="9" cy="13" r="1.5" fill="white" stroke="none" />
-                    <circle cx="15" cy="13" r="1.5" fill="white" stroke="none" />
-                    <path d="M9 17h6" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-lg">Hola, soy otro-GPT</p>
-                  <p className="text-sm text-zinc-500 mt-1">
-                    Escribe un mensaje para comenzar la conversación.
-                  </p>
+                  {msg.role === "user" ? (
+                    <p className="whitespace-pre-wrap text-[0.9375rem] leading-relaxed">
+                      {msg.content}
+                    </p>
+                  ) : msg.type === "image" && msg.imageB64 ? (
+                    <div className="space-y-2">
+                      <img
+                        src={`data:image/png;base64,${msg.imageB64}`}
+                        alt={msg.content}
+                        className="max-w-full rounded-xl border border-border"
+                      />
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-muted-foreground italic truncate">
+                          {msg.content}
+                        </p>
+                        <button
+                          onClick={() => {
+                            const link = document.createElement("a");
+                            link.href = `data:image/png;base64,${msg.imageB64}`;
+                            link.download = `otro-gpt-${Date.now()}.png`;
+                            link.click();
+                          }}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          title="Descargar imagen PNG"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Descargar
+                        </button>
+                      </div>
+                    </div>
+                  ) : msg.type === "audio" && msg.audioUrl ? (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground italic">
+                        {msg.content}
+                      </p>
+                      <audio
+                        controls
+                        src={msg.audioUrl}
+                        className="w-full max-w-xs"
+                      />
+                      <button
+                        onClick={() => {
+                          const link = document.createElement("a");
+                          link.href = msg.audioUrl!;
+                          link.download = `otro-gpt-${Date.now()}.mp3`;
+                          link.click();
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        title="Descargar audio MP3"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Descargar audio
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="text-[0.9375rem] leading-relaxed">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                      {provider === "openai" && (
+                        <button
+                          onClick={() => speakText(msg.content)}
+                          disabled={isSpeaking}
+                          className="mt-1 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
+                          title="Escuchar respuesta"
+                        >
+                          {isSpeaking ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Volume2 className="h-3.5 w-3.5" />
+                          )}
+                          Escuchar
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-4 pb-4">
-                {messages.map((msg, i) => (
-                  <div
-                    key={i}
-                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    {msg.type === "image" && msg.role === "assistant" ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={msg.mediaUrl}
-                        alt={msg.content}
-                        className="max-w-sm w-full rounded-2xl"
-                      />
-                    ) : msg.type === "audio" && msg.role === "assistant" ? (
-                      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-3 max-w-sm w-full">
-                        <p className="text-xs text-zinc-500 mb-2 truncate">{msg.content}</p>
-                        <audio
-                          src={msg.mediaUrl}
-                          controls
-                          autoPlay
-                          className="w-full"
-                          style={{ height: "32px" }}
-                        />
-                      </div>
-                    ) : (
-                      <div
-                        className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm whitespace-pre-wrap ${
-                          msg.role === "user"
-                            ? "bg-zinc-700 text-white"
-                            : "bg-zinc-900 border border-zinc-800 text-zinc-100"
-                        }`}
-                      >
-                        {msg.content}
-                      </div>
-                    )}
-                  </div>
-                ))}
+            ))}
 
-                {loading && (
-                  <div className="flex justify-start">
-                    <div className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-2 text-sm text-zinc-500">
-                      {LOADING_LABELS[loadingMode]}
-                    </div>
-                  </div>
-                )}
-                <div ref={bottomRef} />
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="flex items-center gap-1.5 px-1 py-2">
+                  <span className="typing-dot h-2 w-2 rounded-full bg-muted-foreground" />
+                  <span className="typing-dot h-2 w-2 rounded-full bg-muted-foreground" />
+                  <span className="typing-dot h-2 w-2 rounded-full bg-muted-foreground" />
+                </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Fixed bottom controls */}
-      <div className="flex-shrink-0 border-t border-zinc-900 bg-black">
-        <div className="max-w-2xl mx-auto px-4 py-4 space-y-3">
-          {/* Mode selector */}
-          <div className="flex justify-center gap-2">
-            {MODES.map(({ id, label, icon }) => {
-              const disabled = !isOpenAI && id !== "text";
-              return (
-                <button
-                  key={id}
-                  onClick={() => !disabled && setMode(id)}
-                  disabled={disabled}
-                  title={disabled ? "No disponible para modelos de Anthropic" : undefined}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    disabled
-                      ? "text-zinc-700 border border-zinc-900 cursor-not-allowed"
-                      : mode === id
-                      ? "bg-white text-black"
-                      : "text-zinc-400 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200"
-                  }`}
-                >
-                  {icon}
-                  {label}
-                </button>
-              );
-            })}
+      {/* Input */}
+      <footer className="border-t border-border bg-background">
+        {/* Mode Tabs */}
+        {provider === "openai" && (
+          <div className="mx-auto flex max-w-2xl justify-center gap-1 px-4 pt-3 sm:px-6">
+            {([
+              { key: "chat" as Mode, label: "Texto", icon: MessageSquare },
+              { key: "image" as Mode, label: "Imagen", icon: ImageIcon },
+              { key: "tts" as Mode, label: "Texto a Audio", icon: Volume2 },
+            ]).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                onClick={() => setMode(key)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                  mode === key
+                    ? "bg-foreground text-background"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
-
-          {/* Input */}
-          <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-2.5">
+        )}
+        <form
+          onSubmit={handleSubmit}
+          className="mx-auto flex max-w-2xl items-end gap-3 px-4 py-3 sm:px-6"
+        >
+          {mode === "chat" && provider === "openai" && (
             <button
+              type="button"
               onClick={toggleRecording}
-              disabled={loading || isTranscribing}
-              title={isRecording ? "Detener grabación" : "Grabar audio"}
-              className={`flex-shrink-0 transition-colors disabled:cursor-not-allowed ${
+              disabled={isLoading}
+              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-colors self-end ${
                 isRecording
-                  ? "text-red-500 animate-pulse"
-                  : isTranscribing
-                  ? "text-zinc-500"
-                  : "text-zinc-600 hover:text-zinc-400"
-              }`}
+                  ? "bg-red-500 text-white animate-pulse"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              } disabled:opacity-30`}
+              title={isRecording ? "Detener grabación" : "Dictar con voz"}
             >
-              {isTranscribing ? (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
+              {isRecording ? (
+                <MicOff className="h-4.5 w-4.5" />
               ) : (
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="22" />
-                </svg>
+                <Mic className="h-4.5 w-4.5" />
               )}
             </button>
-            <textarea
-              className="flex-1 bg-transparent text-sm text-white placeholder-zinc-600 outline-none resize-none min-h-[22px] max-h-28"
-              placeholder={PLACEHOLDERS[mode]}
-              rows={1}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-            />
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim() || loading}
-              className="flex-shrink-0 w-8 h-8 rounded-full bg-white flex items-center justify-center disabled:opacity-25 disabled:cursor-not-allowed transition-opacity"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2.5">
-                <path d="m22 2-7 20-4-9-9-4z" />
-                <path d="M22 2 11 13" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={
+              isRecording
+                ? "Grabando... toca el mic para detener"
+                : mode === "chat"
+                  ? "Escribe un mensaje..."
+                  : mode === "image"
+                    ? "Describe la imagen a generar..."
+                    : "Escribe el texto a convertir en audio..."
+            }
+            rows={1}
+            className="flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-3 text-[0.9375rem] leading-relaxed text-foreground placeholder:text-muted-foreground focus:border-foreground/20 focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={!input.trim() || isLoading}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-foreground text-background transition-opacity hover:opacity-80 disabled:opacity-30"
+          >
+            {isLoading ? (
+              <Loader2 className="h-4.5 w-4.5 animate-spin" />
+            ) : (
+              <Send className="h-4.5 w-4.5" />
+            )}
+          </button>
+        </form>
+      </footer>
     </div>
   );
 }

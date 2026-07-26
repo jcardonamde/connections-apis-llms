@@ -1,65 +1,52 @@
-import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
-import { GoogleGenAI } from "@google/genai";
+import { NextRequest, NextResponse } from "next/server";
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { google } from "@ai-sdk/google";
 
-const openai = new OpenAI();
-const anthropic = new Anthropic();
-const google = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY ?? "",
-  httpOptions: { apiVersion: "v1beta" },
-});
+const SYSTEM_PROMPT =
+  "Eres otro-GPT, un asistente útil. REGLA IMPORTANTE: Nunca generes imágenes en SVG, ASCII art, código de imagen, ni ningún formato visual basado en texto. Si el usuario pide una imagen, responde exactamente: 'Para generar imágenes, usa el botón de imagen (ícono 🖼️) en la esquina superior derecha. Ahí puedes describir lo que quieres y se generará con DALL-E 3 en formato PNG.' No intentes dar alternativas ni workarounds para generar imágenes.";
 
-export async function POST(request: Request) {
+type Provider = "openai" | "anthropic" | "google";
+
+const models = {
+  openai: openai("gpt-5"),
+  anthropic: anthropic("claude-sonnet-4-6"),
+  google: google("gemini-3-flash-preview"),
+};
+
+export async function POST(req: NextRequest) {
   try {
-    const { messages, model = "gpt-5-nano", systemPrompt = "" } = await request.json();
+    const { messages, provider = "openai" } = await req.json();
 
-    const lastUserMessage = messages[messages.length - 1];
-    if (!lastUserMessage?.content) {
-      return Response.json({ error: "No message provided" }, { status: 400 });
+    if (!messages || !Array.isArray(messages)) {
+      return NextResponse.json(
+        { error: "Messages array is required" },
+        { status: 400 }
+      );
     }
 
-    if (model.startsWith("claude-")) {
-      const response = await anthropic.messages.create({
-        model,
-        max_tokens: 1024,
-        ...(systemPrompt && { system: systemPrompt }),
-        messages,
-      });
-      const block = response.content[0];
-      if (block.type !== "text") {
-        return Response.json({ error: "Unexpected response type" }, { status: 500 });
-      }
-      return Response.json({ role: "assistant", content: block.text });
+    const selectedProvider: Provider =
+      provider === "anthropic" ? "anthropic" :
+      provider === "google" ? "google" :
+      "openai";
 
-    } else if (model.startsWith("gemini-")) {
-      const contents = messages.map((m: { role: string; content: string }) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      }));
+    const { text } = await generateText({
+      model: models[selectedProvider],
+      system: SYSTEM_PROMPT,
+      messages,
+    });
 
-      const response = await google.models.generateContent({
-        model,
-        contents,
-        config: systemPrompt
-          ? { systemInstruction: { parts: [{ text: systemPrompt }] } }
-          : undefined,
-      });
-
-      return Response.json({ role: "assistant", content: response.text });
-
-    } else {
-      const systemMessages = systemPrompt
-        ? [{ role: "system" as const, content: systemPrompt }]
-        : [];
-
-      const completion = await openai.chat.completions.create({
-        model,
-        messages: [...systemMessages, ...messages],
-      });
-      return Response.json({ role: "assistant", content: completion.choices[0].message.content });
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to connect to the API";
-    return Response.json({ error: message }, { status: 500 });
+    return NextResponse.json({
+      message: {
+        role: "assistant",
+        content: text,
+      },
+    });
+  } catch (error: unknown) {
+    console.error("Chat API error:", error);
+    const message =
+      error instanceof Error ? error.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
