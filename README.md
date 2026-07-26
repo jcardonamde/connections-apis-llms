@@ -15,7 +15,7 @@ Scripts de Node.js + TypeScript para explorar la API de Anthropic (Claude) desde
 → Ver [anthropic/README.md](anthropic/README.md)
 
 ### `othergpt/`
-Interfaz web construida con Next.js que integra múltiples proveedores de IA. Soporta chat con contexto, generación de imágenes, texto a audio y transcripción de voz. Permite cambiar entre modelos de OpenAI y Anthropic desde la UI.
+Interfaz web (Next.js 16) que integra chat con OpenAI, Anthropic y Google Gemini, seleccionable desde el header. Cuando el proveedor activo es OpenAI, además habilita generación de imágenes, texto a audio y dictado por voz.
 
 → Ver [othergpt/othergpt/README.md](othergpt/othergpt/README.md)
 
@@ -43,5 +43,5 @@ Cada proyecto usa sus propias variables de entorno en un archivo `.env` o `.env.
 |---|---|---|
 | `openai/` | `OPENAI_API_KEY` | OpenAI |
 | `anthropic/` | `ANTHROPIC_API_KEY` | Anthropic |
-| `othergpt/` | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` | OpenAI + Anthropic |
+| `othergpt/` | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` + `GEMINI_API_KEY` | OpenAI + Anthropic + Google |
 | `vercel-demo/` | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` + `GOOGLE_GENERATIVE_AI_API_KEY` | OpenAI + Anthropic + Google |
