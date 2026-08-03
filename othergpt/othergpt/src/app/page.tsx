@@ -326,9 +326,9 @@ export default function Home() {
               }}
               className="rounded-lg border border-border bg-muted px-2.5 py-1.5 text-xs font-medium text-foreground focus:border-foreground/20 focus:outline-none"
             >
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="google">Google Gemini</option>
+              <option value="openai" className="bg-[var(--background)] text-[var(--foreground)]">OpenAI</option>
+              <option value="anthropic" className="bg-[var(--background)] text-[var(--foreground)]">Anthropic</option>
+              <option value="google" className="bg-[var(--background)] text-[var(--foreground)]">Google Gemini</option>
             </select>
             <button
               onClick={clearChat}
