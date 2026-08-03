@@ -24,6 +24,11 @@ Script de Node.js + TypeScript que usa el Vercel AI SDK (`ai` + `@ai-sdk/*`) par
 
 → Ver [vercel-demo/README.md](vercel-demo/README.md)
 
+### `elevenlabs/`
+Script de Node.js + TypeScript que usa el SDK oficial de ElevenLabs para convertir texto a voz y reproducir el audio en la terminal (requiere ffmpeg/ffplay instalado en el sistema).
+
+→ Ver [elevenlabs/README.md](elevenlabs/README.md)
+
 ## Estructura
 
 ```
@@ -32,7 +37,8 @@ conexion-terminal/
 ├── anthropic/       # Scripts TypeScript: mensajes, multi-turno, streaming con Claude
 ├── othergpt/
 │   └── othergpt/    # App Next.js: chat, imagen, audio, selector de modelos
-└── vercel-demo/     # Script TypeScript: Vercel AI SDK, proveedor seleccionable (OpenAI/Anthropic/Google)
+├── vercel-demo/     # Script TypeScript: Vercel AI SDK, proveedor seleccionable (OpenAI/Anthropic/Google)
+└── elevenlabs/      # Script TypeScript: texto a voz con ElevenLabs, reproducción vía ffplay
 ```
 
 ## API keys requeridas
@@ -45,3 +51,4 @@ Cada proyecto usa sus propias variables de entorno en un archivo `.env` o `.env.
 | `anthropic/` | `ANTHROPIC_API_KEY` | Anthropic |
 | `othergpt/` | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` + `GEMINI_API_KEY` | OpenAI + Anthropic + Google |
 | `vercel-demo/` | `OPENAI_API_KEY` + `ANTHROPIC_API_KEY` + `GOOGLE_GENERATIVE_AI_API_KEY` | OpenAI + Anthropic + Google |
+| `elevenlabs/` | `ELEVENLABS_API_KEY` | ElevenLabs |
